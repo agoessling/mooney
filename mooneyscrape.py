@@ -9,32 +9,63 @@ import urllib
 
 pp = pprint.PrettyPrinter(indent=2)
 
-db = peewee.SqliteDatabase('mooney.db')
+_DB = peewee.SqliteDatabase('mooney.db')
 
 _HEADERS = {'User-Agent': 'Mozilla/5.0'}
 _REQ_DELAY = 0.5
-controller_url = 'https://www.controller.com/listings/aircraft/for-sale/list/category/13/aircraft/manufacturer/mooney/model-group/m20j'
-trade_url = 'https://www.trade-a-plane.com/search?make=MOONEY&model_group=MOONEY+M20+SERIES&s-type=aircraft'
+_CONTROLLER_URLS = [
+    'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
+    'aircraft/manufacturer/mooney/model/m20m-bravo',
+    'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
+    'aircraft/manufacturer/mooney/model-group/m20k',
+    'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
+    'aircraft/manufacturer/mooney/model-group/m20j'
+]
+_TRADE_A_PLANE_URLS = [
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20J+201&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20J+205&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20K+231&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20K+252&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20K+305+ROCKET&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20M+BRAVO&s-type=aircraft',
+    'https://www.trade-a-plane.com/search?category_level1=' +
+    'Single+Engine+Piston&make=MOONEY&model=M20M+TLS+BRAVO&s-type=aircraft'
+]
+
+def PrintUrlOnFail(func):
+  def func_wrapper(url):
+    try:
+      return func(url)
+    except:
+      print('Error while processing: {}'.format(url))
+      raise
+  return func_wrapper
 
 class Listing(peewee.Model):
   title = peewee.CharField()
   url = peewee.CharField(unique=True)
-  price = peewee.FloatField()
-  year = peewee.IntegerField()
-  registration = peewee.CharField()
-  model = peewee.CharField()
-  serial = peewee.CharField()
+  price = peewee.FloatField(null=True)
+  year = peewee.IntegerField(null=True)
+  registration = peewee.CharField(null=True)
+  model = peewee.CharField(null=True)
+  serial = peewee.CharField(null=True)
   engine_hours = peewee.FloatField(null=True)
   overhaul_type = peewee.CharField(null=True)
-  airframe_hours = peewee.FloatField()
+  airframe_hours = peewee.FloatField(null=True)
   gps = peewee.CharField(null=True)
   transponder = peewee.CharField(null=True)
-  state = peewee.CharField()
+  state = peewee.CharField(null=True)
   city = peewee.CharField(null=True)
   source_time = peewee.TimestampField()
 
   class Meta:
-    database = db
+    database = _DB
 
   def __repr__(self):
     return pprint.pformat(self._data)
@@ -73,12 +104,17 @@ def FindTradeAPlaneSpec(soup, prop_name=None, convert_func=None):
     return None
 
   if convert_func == float or convert_func == int:
-    return convert_func(soup.replace(',', ''))
+    val_str = re.sub(r'[^(0-9\.)]', '', soup)
+    if val_str:
+      return convert_func(val_str)
+    else:
+      return None
   elif convert_func:
     return convert_func(soup)
   else:
     return soup
 
+@PrintUrlOnFail
 def ParseTradeAPlaneListing(url):
   request = urllib.request.Request(url, headers=_HEADERS)
   html = urllib.request.urlopen(request).read().decode('utf-8')
@@ -134,20 +170,21 @@ def ParseTradeAPlaneSummary(url):
 
   print('Found {:d} listings.'.format(len(result_divs)))
 
-  listings = []
-
   for div in result_divs:
     while time.time() < load_time + _REQ_DELAY:
       time.sleep(0.1)
 
-    print('Opening {}.'.format(div.a.text.strip()))
     listing_url = urllib.parse.urljoin(url, div.a['href'])
+    try:
+      Listing.get(Listing.url == listing_url)
+      print('Skipping {}.'.format(div.a.next_element.strip()))
+      continue
+    except peewee.DoesNotExist:
+      print('Opening {}.'.format(div.a.next_element.strip()))
+
     load_time = time.time()
     listing = ParseTradeAPlaneListing(listing_url)
-    pp.pprint(listing)
-    listings.append(listing)
-
-  return listings
+    listing.save()
 
 
 def ParseControllerSummary(url):
@@ -166,15 +203,16 @@ def ParseControllerSummary(url):
     listing_url = urllib.parse.urljoin(url, div.a['href'])
     try:
       Listing.get(Listing.url == listing_url)
+      print('Skipping {}.'.format(div.a.next_element.strip()))
       continue
     except peewee.DoesNotExist:
-      pass
+      print('Opening {}.'.format(div.a.next_element.strip()))
 
-    print('Opening {}.'.format(div.a.string))
     load_time = time.time()
     listing = ParseControllerListing(listing_url)
     listing.save()
 
+@PrintUrlOnFail
 def ParseControllerListing(url):
   request = urllib.request.Request(url, headers=_HEADERS)
   html = urllib.request.urlopen(request).read().decode('utf-8')
@@ -183,9 +221,15 @@ def ParseControllerListing(url):
 
   listing.title = soup.find('h1').string.strip()
   listing.url = url
-  price_str = soup.find('h4', string=re.compile('For Sale Price:')).string
-  if price_str:
-    listing.price = re.sub(r'[^(\d\.)]', '', price_str)
+
+  h4s = soup.find_all('h4')
+  for h4 in h4s:
+    if h4.find(text=re.compile('For Sale Price:')):
+      price_str = re.sub(r'[^(\d\.)]', '', h4.next_element)
+      if price_str:
+        listing.price = float(price_str)
+      break
+
   listing.year = FindControllerSpec(soup, 'Year', int)
   listing.registration = FindControllerSpec(soup, 'Registration #')
   listing.model = FindControllerSpec(soup, 'Model')
@@ -194,8 +238,12 @@ def ParseControllerListing(url):
 
   overhaul_str = FindControllerSpec(soup, 'Overhaul')
   if overhaul_str:
-    listing.engine_hours = float(overhaul_str.split(' ')[0].replace(',', ''))
-    listing.overhaul_type = overhaul_str.split(' ')[1]
+    hours_match = re.search(r'([0-9,\.]+)', overhaul_str)
+    type_match = re.search(r'(?:[0-9,\.]+)\s*([a-zA-Z]+)', overhaul_str)
+    if hours_match:
+      listing.engine_hours = float(hours_match.group(1).replace(',',''))
+    if type_match:
+      listing.overhaul_type = type_match.group(1)
 
   location = soup.find('a', class_='machinelocation').string
   if location and location.string:
@@ -217,8 +265,10 @@ def FindControllerSpec(soup, spec_name, convert_func=None):
     sibling = name_div.find_next_sibling('div')
     if sibling:
       if convert_func:
-        if convert_func == float:
-          return convert_func(sibling.string.replace(',', ''))
+        if convert_func == float or convert_func == int:
+          val_str = re.sub(r'[^(0-9\.)]', '', sibling.string)
+          if val_str:
+            return convert_func(val_str)
         else:
           return convert_func(sibling.string)
       else:
@@ -226,6 +276,11 @@ def FindControllerSpec(soup, spec_name, convert_func=None):
   return None
 
 if __name__ == '__main__':
-  db.connect()
+  _DB.connect()
   Listing.create_table(fail_silently=True)
-  ParseControllerSummary(controller_url)
+
+  for url in _CONTROLLER_URLS:
+    ParseControllerSummary(url)
+
+  for url in _TRADE_A_PLANE_URLS:
+    ParseTradeAPlaneSummary(url)
