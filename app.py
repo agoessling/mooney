@@ -9,6 +9,8 @@ from models import ListingForm
 import peewee
 from wtfpeewee.orm import model_form
 
+ListingForm = model_form(Listing, exclude=['title', 'url', 'source_time'])
+
 app = Flask(__name__)
 
 @app.template_filter('NoNone')

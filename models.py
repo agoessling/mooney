@@ -22,5 +22,3 @@ class Listing(peewee.Model):
 
   class Meta:
     database = db
-
-ListingForm = model_form(Listing, exclude=['title', 'url', 'source_time'])
