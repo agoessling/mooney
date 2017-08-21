@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" type="text/css"
+      href="//cdn.datatables.net/1.10.15/css/jquery.dataTables.css">
+  <script type="text/javascript" charset="utf8"
+      src="//cdn.datatables.net/1.10.15/js/jquery.dataTables.js"></script>
+  <script type="text/javascript"
+      src="{{ url_for('static', filename='index.js') }}"></script>
+{% endblock %}
+{% block content %}
+  <table id="listings_table" class="table table-sm table-bordered nowrap">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Title</th>
+        <th>Year</th>
+        <th>Model</th>
+        <th>Tail #</th>
+        <th>Airframe Hours</th>
+        <th>Engine Hours</th>
+        <th>Overhaul Type</th>
+        <th>GPS</th>
+        <th>Transponder</th>
+        <th>City</th>
+        <th>State</th>
+        <th>Price</th>
+      </tr>
+    </thead>
+    <tfoot>
+      <tr></tr>
+    </tfoot>
+    <tbody>
+      {% for item in listings %}
+      <tr>
+        <td><a href="/listing/{{ item.id }}">Edit</a></td>
+        <td><a href="{{ item.url }}" target="_blank">{{ item.title }}</a></td>
+        <td>{{ item.year|NoNone }}</td>
+        <td>{{ item.model|NoNone }}</td>
+        <td>{{ item.registration|NoNone }}</td>
+        <td>{{ item.airframe_hours|NoNone }}</td>
+        <td>{{ item.engine_hours|NoNone }}</td>
+        <td>{{ item.overhaul_type|NoNone }}</td>
+        <td>{{ item.gps|NoNone }}</td>
+        <td>{{ item.transponder|NoNone }}</td>
+        <td>{{ item.city|NoNone }}</td>
+        <td>{{ item.state|NoNone }}</td>
+        <td>{% if item.price %}
+          {{ '${:,.0f}'.format(item.price) }}
+        {% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

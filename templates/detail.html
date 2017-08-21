@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block head %}
+  {{ super() }}
+{% endblock %}
+{% block content %}
+  <div class="container">
+    <h3><a href="{{ listing.url }}" target="_blank">{{ listing.title }}</a></h3>
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <h5>Error in form.</h5>
+        <ul>
+        {% for field_name, field_errors in form.errors|dictsort if field_errors %}
+          {% for error in field_errors %}
+            <li>{{ form[field_name].label.text }}: {{ error}}</li>
+          {% endfor %}
+        {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <form method="post" action="">
+      {% for field in form %}
+        <div class="form-group row">
+          {{ field.label(class_="col-form-label col-sm-2") }}
+          {{ field(class_="form-control col-sm-10") }}
+        </div>
+      {% endfor %}
+      <div class="form-group row justify-content-end">
+      <button class="btn btn-primary" type="submit">Update</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
