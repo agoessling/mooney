@@ -5,7 +5,6 @@ from flask import render_template
 from flask import request
 from flask import url_for
 from models import Listing
-from models import ListingForm
 import peewee
 from wtfpeewee.orm import model_form
 
@@ -42,4 +41,5 @@ def ListingDetail(listing_id):
 
   return render_template('detail.html', form=form, listing=listing)
 
-app.run()
+if __name__ == '__main__':
+  app.run()
