@@ -414,7 +414,8 @@ if __name__ == '__main__':
 
     logger.info('Found {:d} new listings.'.format(len(new_listings)))
 
-    SendNewListingEmail(new_listings)
+    if new_listings:
+      SendNewListingEmail(new_listings)
 
   except KeyboardInterrupt:
     raise
