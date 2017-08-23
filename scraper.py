@@ -7,12 +7,14 @@ from models import Listing
 import peewee
 import re
 from state_abbrev import state_abbrev
+import smtplib
 import time
 import urllib.parse
 import urllib.request
 
 _HEADERS = {'User-Agent': 'Mozilla/5.0'}
 _REQ_DELAY = 0.5
+_EMAIL_RECIPIENTS = ['agoessling@gmail.com', 'andrew.goessling@kittyhawk.aero']
 
 _CONTROLLER_URLS = [
     'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
@@ -38,6 +40,22 @@ _TRADE_A_PLANE_URLS = [
     'https://www.trade-a-plane.com/search?s-page_size=100&category_level1=' +
     'Single+Engine+Piston&make=MOONEY&model=M20M+TLS+BRAVO&s-type=aircraft'
 ]
+
+def SendEmail(subject, body):
+  session = smtplib.SMTP('smtp.gmail.com', 587)
+  session.ehlo()
+  session.starttls()
+  session.ehlo()
+  session.login('agoessling@gmail.com', 'yedvoxtyqrbludsf')
+  
+  headers = '\r\n'.join([
+      'From: Mooney Scraper',
+      'Subject: ' + subject,
+      'To: ' + ', '.join(_EMAIL_RECIPIENTS),
+      'MIME-Version: 1.0',
+      'Content-Type: text/html'])
+
+  session.sendmail('agoessling@gmail.com', _EMAIL_RECIPIENTS, headers + '\r\n\r\n' + body)
 
 def FindGps(html):
   gps_match = re.search(r'(?:GTN|GNS|KLN)[\s-]*'
