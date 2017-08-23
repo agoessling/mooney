@@ -2,6 +2,7 @@
 
 import argparse
 import bs4
+import functools
 import logging
 from models import Listing
 import peewee
@@ -9,6 +10,7 @@ import re
 from state_abbrev import state_abbrev
 import smtplib
 import time
+import traceback
 import urllib.parse
 import urllib.request
 
@@ -41,21 +43,56 @@ _TRADE_A_PLANE_URLS = [
     'Single+Engine+Piston&make=MOONEY&model=M20M+TLS+BRAVO&s-type=aircraft'
 ]
 
+def HandleParseError(description):
+  def HandleParseErrorDecorator(func):
+    @functools.wraps(func)
+    def func_wrapper(url, *args, **kwargs):
+      try:
+        return func(url, *args, **kwargs)
+      except KeyboardInterrupt:
+        raise
+      except:
+        logger.exception('Error parsing {}: {}'.format(description, url))
+
+        if cmd_args.email:
+          SendEmail('Error in {}'.format(description.title()),
+              'Problem parsing <a href="{}">{}</a>.<pre>\n\n{}</pre>'.format(
+                  url, description, traceback.format_exc()))
+
+        if cmd_args.try_continue:
+          return None
+        else:
+          raise
+    return func_wrapper
+  return HandleParseErrorDecorator
+
 def SendEmail(subject, body):
   session = smtplib.SMTP('smtp.gmail.com', 587)
   session.ehlo()
   session.starttls()
   session.ehlo()
   session.login('agoessling@gmail.com', 'yedvoxtyqrbludsf')
-  
-  headers = '\r\n'.join([
+
+  text = '\r\n'.join([
       'From: Mooney Scraper',
       'Subject: ' + subject,
       'To: ' + ', '.join(_EMAIL_RECIPIENTS),
       'MIME-Version: 1.0',
-      'Content-Type: text/html'])
+      'Content-Type: text/html',
+      '\r\n',
+      body])
 
-  session.sendmail('agoessling@gmail.com', _EMAIL_RECIPIENTS, headers + '\r\n\r\n' + body)
+  session.sendmail('agoessling@gmail.com', _EMAIL_RECIPIENTS, text)
+
+def SendNewListingEmail(new_listings):
+  subject = 'Found {:d} New Listings'.format(len(new_listings))
+  body = '<h4>Found {:d} new listings:</h4>'.format(len(new_listings))
+  body += '<ul>'
+  for listing in new_listings:
+    body += '<li><a href="http://23.92.25.110/listing/{}/">{}</a></li>'.format(
+        listing.id, listing.title)
+  body += '</ul>'
+  SendEmail(subject, body)
 
 def FindGps(html):
   gps_match = re.search(r'(?:GTN|GNS|KLN)[\s-]*'
@@ -110,6 +147,7 @@ def FindTradeAPlaneSpec(soup, prop_name=None, convert_func=None):
   else:
     return soup
 
+@HandleParseError('Trade-A-Plane listing')
 def ParseTradeAPlaneListing(url):
   request = urllib.request.Request(url, headers=_HEADERS)
   html = urllib.request.urlopen(request).read().decode('utf-8')
@@ -159,6 +197,7 @@ def ParseTradeAPlaneListing(url):
 
   return listing
 
+@HandleParseError('Trade-A-Plane summary')
 def ParseTradeAPlaneSummary(url):
   logger.info('Scraping Trade-A-Plane summary: {}'.format(url))
 
@@ -187,12 +226,8 @@ def ParseTradeAPlaneSummary(url):
 
     load_time = time.time()
 
-    try:
-      listing = ParseTradeAPlaneListing(listing_url)
-    except KeyboardInterrupt:
-      raise
-    except:
-      logger.exception('Error parsing Trade-A-Plane listing: {}'.format(url))
+    listing = ParseTradeAPlaneListing(listing_url)
+    if not listing:
       continue
 
     if listing.registration:
@@ -226,6 +261,7 @@ def FindControllerSpec(soup, spec_name, convert_func=None):
         return sibling.string
   return None
 
+@HandleParseError('Controller listing')
 def ParseControllerListing(url):
   request = urllib.request.Request(url, headers=_HEADERS)
   html = urllib.request.urlopen(request).read().decode('utf-8')
@@ -274,6 +310,7 @@ def ParseControllerListing(url):
 
   return listing
 
+@HandleParseError('Controller summary')
 def ParseControllerSummary(url, page=1):
   logger.info('Scraping Controller Summary, Page {:d}: {}'.format(page, url))
 
@@ -301,12 +338,8 @@ def ParseControllerSummary(url, page=1):
 
     load_time = time.time()
 
-    try:
-      listing = ParseControllerListing(listing_url)
-    except KeyboardInterrupt:
-      raise
-    except:
-      logger.exception('Error parsing Controller listing: {}'.format(url))
+    listing = ParseControllerListing(listing_url)
+    if not listing:
       continue
 
     if listing.registration:
@@ -330,56 +363,66 @@ def ParseControllerSummary(url, page=1):
   return new_listings
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser(
-      description='Scrapes web for aircraft sales listings.')
-  parser.add_argument('--log-file',
-      help='Path to log file.  Defaults to stdout.')
-  parser.add_argument('--verbose', action='store_true',
-      help='Verbose logging information.')
-  args = parser.parse_args()
+  try:
+    parser = argparse.ArgumentParser(
+        description='Scrapes web for aircraft sales listings.')
+    parser.add_argument('--log-file',
+        help='Path to log file.  Defaults to stdout.')
+    parser.add_argument('--verbose', action='store_true',
+        help='Verbose logging information.')
+    parser.add_argument('--email', action='store_true',
+        help='Send error and new listing emails.')
+    parser.add_argument('--try-continue', action='store_true',
+        help='Log and continue on error.')
+    cmd_args = parser.parse_args()
 
-  logger = logging.getLogger('Scraper')
+    logger = logging.getLogger('Scraper')
 
-  if args.verbose:
-    level = logging.DEBUG
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-  else:
-    level = logging.INFO
-    formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    if cmd_args.verbose:
+      level = logging.DEBUG
+      formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    else:
+      level = logging.INFO
+      formatter = logging.Formatter('[%(levelname)s] %(message)s')
 
-  if args.log_file:
-    handler = logging.FileHandler(args.log_file)
-    handler.setFormatter(formatter)
-  else:
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
+    if cmd_args.log_file:
+      handler = logging.FileHandler(cmd_args.log_file)
+      handler.setFormatter(formatter)
+    else:
+      handler = logging.StreamHandler()
+      handler.setFormatter(formatter)
 
-  logger.propagate = False
-  logger.setLevel(level)
-  logger.addHandler(handler)
+    logger.propagate = False
+    logger.setLevel(level)
+    logger.addHandler(handler)
 
-  Listing.create_table(fail_silently=True)
+    Listing.create_table(fail_silently=True)
 
-  logging.info('Starting scrape.')
+    logging.info('Starting scrape.')
 
-  new_listings = []
+    new_listings = []
 
-  for url in _CONTROLLER_URLS:
-    try:
-      new_listings += ParseControllerSummary(url)
-    except KeyboardInterrupt:
-      raise
-    except:
-      logging.exception('Error parsing Controller summary: {}'.format(url))
-      continue
+    for url in _CONTROLLER_URLS:
+      listings = ParseControllerSummary(url)
+      if listings:
+        new_listings += listings
 
-  for url in _TRADE_A_PLANE_URLS:
-    try:
-      new_listings += ParseTradeAPlaneSummary(url)
-    except KeyboardInterrupt:
-      raise
-    except:
-      logging.exception('Error parsing Trade-A-Plane summary: {}'.format(url))
-      continue
+    for url in _TRADE_A_PLANE_URLS:
+      listings = ParseTradeAPlaneSummary(url)
+      if listings:
+        new_listings += listings
 
-  logger.info('Found {:d} new listings.'.format(len(new_listings)))
+    logger.info('Found {:d} new listings.'.format(len(new_listings)))
+
+    SendNewListingEmail(new_listings)
+
+  except KeyboardInterrupt:
+    raise
+  except:
+    logger.exception('Error in scraper.')
+
+    if cmd_args.email:
+      SendEmail('Error in Scraper',
+          'Problem in scraper script.<pre>\n\n{}</pre>'.format(
+              traceback.format_exc()))
+    raise
