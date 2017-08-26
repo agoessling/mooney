@@ -4,17 +4,23 @@
 {% endblock %}
 {% block content %}
   <div class="container">
-    <h3><a href="{{ listing.url }}" target="_blank">{{ listing.title }}</a></h3>
+    <div class="row">
+      <div class="col">
+        <h3><a href="{{ listing.url }}" target="_blank">{{ listing.title }}</a></h3>
+      </div>
+    </div>
     {% if form.errors %}
-      <div class="alert alert-danger">
-        <h5>Error in form.</h5>
-        <ul>
-        {% for field_name, field_errors in form.errors|dictsort if field_errors %}
-          {% for error in field_errors %}
-            <li>{{ form[field_name].label.text }}: {{ error}}</li>
+      <div class="row">
+        <div class="alert alert-danger col">
+          <h5>Error in form.</h5>
+          <ul>
+          {% for field_name, field_errors in form.errors|dictsort if field_errors %}
+            {% for error in field_errors %}
+              <li>{{ form[field_name].label.text }}: {{ error}}</li>
+            {% endfor %}
           {% endfor %}
-        {% endfor %}
-        </ul>
+          </ul>
+        </div>
       </div>
     {% endif %}
     <form method="post" action="">
@@ -24,8 +30,13 @@
           {{ field(class_="form-control col-sm-10") }}
         </div>
       {% endfor %}
-      <div class="form-group row justify-content-end">
-      <button class="btn btn-primary" type="submit">Update</button>
+      <div class="form-group row">
+	<div class="col">
+          <a class="btn btn-primary" href="/">Back</a>
+        </div>
+	<div class="col">
+          <button class="btn btn-primary float-right" type="submit">Update</button>
+        </div>
       </div>
     </form>
   </div>
