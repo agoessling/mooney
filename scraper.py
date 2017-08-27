@@ -42,6 +42,10 @@ _TRADE_A_PLANE_URLS = [
     'https://www.trade-a-plane.com/search?s-page_size=100&category_level1=' +
     'Single+Engine+Piston&make=MOONEY&model=M20M+TLS+BRAVO&s-type=aircraft'
 ]
+_ASO_URLS = [
+    'https://www.aso.com/listings/AircraftListings.aspx' +
+    '?mg_id=171&act_id=1&mmg=true',
+]
 
 def HandleParseError(description):
   def HandleParseErrorDecorator(func):
@@ -362,6 +366,107 @@ def ParseControllerSummary(url, page=1):
 
   return new_listings
 
+@HandleParseError('ASO listing')
+def ParseAsoListing(url):
+  request = urllib.request.Request(url, headers=_HEADERS)
+  html = urllib.request.urlopen(request).read().decode('utf-8')
+  soup = bs4.BeautifulSoup(html, 'lxml')
+  listing = Listing()
+
+  listing.title = soup.find(
+      'div', class_='adSpecView-header-Descr').find('div').string.strip()
+  listing.url = url
+
+  spans = soup.find_all('span')
+  for span in spans:
+    if span.find(text=re.compile(r'Price')):
+      price_str = re.sub(r'[^(\d\.)]', '', span.next_element)
+      if price_str:
+        listing.price = float(price_str)
+    elif span.find(text=re.compile(r'Reg #')):
+      listing.registration = span.next_element.split(' ')[-1].upper()
+    elif span.find(text=re.compile(r'Serial #')):
+      listing.serial = span.next_element.split(' ')[-1].upper()
+    elif span.find(text=re.compile(r'TTAF:')):
+      hours_str = re.sub(r'[^(\d\.)]', '', span.next_element)
+      if hours_str:
+        listing.airframe_hours = float(hours_str)
+    elif span.find(text=re.compile(r'Location:')):
+      locations = span.next_element.split(' ')
+      if len(locations) > 1:
+        listing.state = SanitizeState(locations[1].strip(' ,'))
+
+  year = re.search(r'(19|20)\d\d', listing.title)
+  if year:
+    listing.year = int(year.group(0))
+
+  model = re.search(r'M20[A-Z]', listing.title.upper())
+  if model:
+    listing.model = model.group(0)
+
+  engine_table = soup.find('table', class_='enginePropView')
+  if engine_table:
+    rows = engine_table.find_all('tr')
+    if len(rows) == 2:
+      for i, col in enumerate(rows[1].find_all('td')):
+        if not re.search(r'[^\d]', col.string):
+          listing.engine_hours = float(col.string)
+          listing.overhaul_type = rows[0].find_all('td')[i].string.upper()
+          break
+
+  listing.gps = FindGps(html)
+  listing.transponder = FindTransponder(html)
+
+  return listing
+
+@HandleParseError('ASO summary')
+def ParseAsoSummary(url):
+  logger.info('Scraping ASO Summary: {}'.format(url))
+
+  load_time = time.time()
+
+  request = urllib.request.Request(url, headers=_HEADERS)
+  soup = bs4.BeautifulSoup(urllib.request.urlopen(request), 'lxml')
+  links = soup.find_all('a', class_='photoListingsDescription')
+  links = [x for x in links if not x.find('img')]
+
+  logger.info('Found {:d} ASO listings.'.format(len(links)))
+
+  new_listings = []
+
+  for link in links:
+    while time.time() < load_time + _REQ_DELAY:
+      time.sleep(0.1)
+
+    listing_url = urllib.parse.urljoin(url, link['href'])
+    try:
+      Listing.get(Listing.url == listing_url)
+      logger.info('Skipping {}.'.format(link.string.strip()))
+      continue
+    except peewee.DoesNotExist:
+      logger.info('Opening {}.'.format(link.string.strip()))
+
+    load_time = time.time()
+
+    listing = ParseAsoListing(listing_url)
+    if not listing:
+      continue
+
+    if listing.registration:
+      try:
+        Listing.get(Listing.registration == listing.registration)
+        logger.info('Duplicate Registration {}: {}.'.format(
+            listing.registration,
+            link.string.strip()))
+        continue
+      except peewee.DoesNotExist:
+        pass
+
+    listing.save()
+    new_listings.append(listing)
+
+  return new_listings
+
 if __name__ == '__main__':
   try:
     parser = argparse.ArgumentParser(
@@ -409,6 +514,11 @@ if __name__ == '__main__':
 
     for url in _TRADE_A_PLANE_URLS:
       listings = ParseTradeAPlaneSummary(url)
+      if listings:
+        new_listings += listings
+
+    for url in _ASO_URLS:
+      listings = ParseAsoSummary(url)
       if listings:
         new_listings += listings
 
