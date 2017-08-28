@@ -16,7 +16,7 @@ import urllib.request
 
 _HEADERS = {'User-Agent': 'Mozilla/5.0'}
 _REQ_DELAY = 0.5
-_EMAIL_RECIPIENTS = []#'agoessling@gmail.com', 'michael.scarito@gmail.com']
+_EMAIL_RECIPIENTS = ['agoessling@gmail.com', 'michael.scarito@gmail.com']
 
 _CONTROLLER_URLS = [
     'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
