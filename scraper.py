@@ -16,7 +16,7 @@ import urllib.request
 
 _HEADERS = {'User-Agent': 'Mozilla/5.0'}
 _REQ_DELAY = 0.5
-_EMAIL_RECIPIENTS = ['agoessling@gmail.com', 'michael.scarito@gmail.com']
+_EMAIL_RECIPIENTS = []#'agoessling@gmail.com', 'michael.scarito@gmail.com']
 
 _CONTROLLER_URLS = [
     'https://www.controller.com/listings/aircraft/for-sale/list/category/13/' +
@@ -45,6 +45,11 @@ _TRADE_A_PLANE_URLS = [
 _ASO_URLS = [
     'https://www.aso.com/listings/AircraftListings.aspx' +
     '?mg_id=171&act_id=1&mmg=true',
+]
+_AIRPLANE_MART_URLS = [
+    'http://airplanemart.com/airplane-for-sale/specific-listing/M20J/351/',
+    'http://airplanemart.com/airplane-for-sale/specific-listing/M20K/352/',
+    'http://airplanemart.com/airplane-for-sale/specific-listing/M20M/348/'
 ]
 
 def HandleParseError(description):
@@ -178,7 +183,7 @@ def ParseTradeAPlaneListing(url):
   overhaul_str = FindTradeAPlaneSpec(soup.find('label',
         string='Engine 1 Overhaul Time:'), 'next_sibling')
   if overhaul_str:
-    overhaul_strs = overhaul_str.split(' ')
+    overhaul_strs = overhaul_str.split()
     if len(overhaul_strs) > 0:
       listing.engine_hours = float(overhaul_strs[0].replace(',', ''))
     if len(overhaul_strs) > 1:
@@ -189,11 +194,11 @@ def ParseTradeAPlaneListing(url):
   if location_str:
     location_strs = location_str.split(',')
     if len(location_strs) == 1:
-      listing.state = SanitizeState(location_strs[0].split(' ')[0]\
+      listing.state = SanitizeState(location_strs[0].split()[0]\
           .replace('\n', ''))
     elif len(location_strs) == 2:
       listing.city = location_strs[0]
-      listing.state = SanitizeState(location_strs[1].strip().split(' ')[0]\
+      listing.state = SanitizeState(location_strs[1].strip().split()[0]\
           .replace('\n', ''))
 
   listing.gps = FindGps(html)
@@ -384,15 +389,15 @@ def ParseAsoListing(url):
       if price_str:
         listing.price = float(price_str)
     elif span.find(text=re.compile(r'Reg #')):
-      listing.registration = span.next_element.split(' ')[-1].upper()
+      listing.registration = span.next_element.split()[-1].upper()
     elif span.find(text=re.compile(r'Serial #')):
-      listing.serial = span.next_element.split(' ')[-1].upper()
+      listing.serial = span.next_element.split()[-1].upper()
     elif span.find(text=re.compile(r'TTAF:')):
       hours_str = re.sub(r'[^(\d\.)]', '', span.next_element)
       if hours_str:
         listing.airframe_hours = float(hours_str)
     elif span.find(text=re.compile(r'Location:')):
-      locations = span.next_element.split(' ')
+      locations = span.next_element.split()
       if len(locations) > 1:
         listing.state = SanitizeState(locations[1].strip(' ,'))
 
@@ -400,7 +405,7 @@ def ParseAsoListing(url):
   if year:
     listing.year = int(year.group(0))
 
-  model = re.search(r'M20[A-Z]', listing.title.upper())
+  model = re.search(r'M20[A-Z]\s*(\d{3})?', listing.title.upper())
   if model:
     listing.model = model.group(0)
 
@@ -467,6 +472,117 @@ def ParseAsoSummary(url):
 
   return new_listings
 
+def FindAirplaneMartSpec(soup, label, func=None):
+  price_tag = soup.find(text=re.compile(label))
+  if price_tag:
+    label_td = price_tag.find_parent('td')
+    value_td = label_td.find_next_sibling('td')
+    value_string = value_td.find('font').string
+    if value_string:
+      if func == float or func == int:
+        value_string = re.sub(r'[^(0-9\.)]', '', value_string)
+        return func(value_string)
+      elif func:
+        return func(value_string)
+      else:
+        return value_string
+
+@HandleParseError('Airplane Mart listing')
+def ParseAirplaneMartListing(url):
+  request = urllib.request.Request(url, headers=_HEADERS)
+  html = urllib.request.urlopen(request).read().decode('utf-8', 'ignore')
+  soup = bs4.BeautifulSoup(html, 'lxml')
+  listing = Listing()
+
+  listing.title = soup.find('font', size='5').find('b').string.strip()
+  listing.url = url
+
+  price_str = re.sub(r'[^(\d\.)]', '', FindAirplaneMartSpec(soup, 'Price:'))
+  if price_str:
+    listing.price = float(price_str)
+
+  listing.registration = FindAirplaneMartSpec(soup, 'Registration:')
+  listing.serial = FindAirplaneMartSpec(soup, 'Serial:')
+  listing.airframe_hours = FindAirplaneMartSpec(soup, 'Airframe Time:', float)
+
+  engine_str = FindAirplaneMartSpec(soup, 'Engine Time\(s\):')
+  if engine_str:
+    match = re.search(r'([0-9\.]+)(?:\s+([A-Z]+))?', engine_str.upper())
+    if match:
+      listing.engine_hours = float(match.group(1))
+      if len(match.groups()) >= 2:
+        listing.overhaul_type = match.group(2)
+
+  location_str = FindAirplaneMartSpec(soup, 'Aircraft Location:')
+  if location_str:
+    location_str = re.sub(r'\s*\(.*\)\s*', '', location_str)
+    if location_str:
+      locations = location_str.split(',')
+      listing.city = locations[0].strip()
+      if len(locations) >= 2:
+        listing.state = SanitizeState(locations[1].split()[0].strip())
+
+  year = re.search(r'(19|20)\d\d', listing.title)
+  if year:
+    listing.year = int(year.group(0))
+
+  model = re.search(r'M20[A-Z]\s*(\d{3})?', listing.title.upper())
+  if model:
+    listing.model = model.group(0)
+
+  listing.gps = FindGps(html)
+  listing.transponder = FindTransponder(html)
+
+  return listing
+
+@HandleParseError('Airplane Mart summary')
+def ParseAirplaneMartSummary(url):
+  logger.info('Scraping Airplane Mart Summary: {}'.format(url))
+
+  load_time = time.time()
+
+  request = urllib.request.Request(url, headers=_HEADERS)
+  soup = bs4.BeautifulSoup(urllib.request.urlopen(request), 'lxml')
+  links = soup.find_all('a',
+      href=re.compile(r'/aircraft-for-sale/Single-Engine-Piston/'))
+
+  logger.info('Found {:d} Airplane Mart listings.'.format(len(links)))
+
+  new_listings = []
+
+  for link in links:
+    while time.time() < load_time + _REQ_DELAY:
+      time.sleep(0.1)
+
+    listing_url = urllib.parse.urljoin(url, link['href'])
+    try:
+      Listing.get(Listing.url == listing_url)
+      logger.info('Skipping {}.'.format(link.find('b').string.strip()))
+      continue
+    except peewee.DoesNotExist:
+      logger.info('Opening {}.'.format(link.find('b').string.strip()))
+
+    load_time = time.time()
+
+    listing = ParseAirplaneMartListing(listing_url)
+    if not listing:
+      continue
+
+    if listing.registration:
+      try:
+        Listing.get(Listing.registration == listing.registration)
+        logger.info('Duplicate Registration {}: {}.'.format(
+            listing.registration,
+            link.find('b').string.strip()))
+        continue
+      except peewee.DoesNotExist:
+        pass
+
+    listing.save()
+    new_listings.append(listing)
+
+  return new_listings
+
 if __name__ == '__main__':
   try:
     parser = argparse.ArgumentParser(
@@ -519,6 +635,11 @@ if __name__ == '__main__':
 
     for url in _ASO_URLS:
       listings = ParseAsoSummary(url)
+      if listings:
+        new_listings += listings
+
+    for url in _AIRPLANE_MART_URLS:
+      listings = ParseAirplaneMartSummary(url)
       if listings:
         new_listings += listings
 
