@@ -1,4 +1,5 @@
 import peewee
+import re
 from wtfpeewee.orm import model_form
 
 db = peewee.SqliteDatabase('mooney.db', check_same_thread=False)
@@ -22,3 +23,14 @@ class Listing(peewee.Model):
 
   class Meta:
     database = db
+
+  def HasWaasGps(self):
+    return self.gps in ['GTN650', 'GTN750', 'GNS530W', 'GNS430W']
+
+  def HasAdsbOut(self):
+    if re.search(r'ES', self.transponder):
+      return True
+    elif self.transponder == 'GTX23':
+      return True
+    else:
+      return False
