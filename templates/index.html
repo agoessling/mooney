@@ -33,8 +33,10 @@
     <tbody>
       {% for item in listings %}
       <tr>
-        <td><a href="/listing/{{ item.id }}">Edit</a></td>
-        <td><a href="{{ item.url }}" target="_blank">{{ item.title }}</a></td>
+        <td><a onclick="window.open('{{ item.url }}', 'listing');" href="/listing/{{ item.id }}">Edit</a></td>
+        <td><a onclick="window.open('{{ item.url }}', 'listing');" href="javascript:;">
+            {{ item.title }}
+        </a></td>
         <td>{{ item.year|NoNone }}</td>
         <td>{{ item.model|NoNone }}</td>
         <td>{{ item.registration|NoNone }}</td>

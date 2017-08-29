@@ -6,7 +6,9 @@
   <div class="container">
     <div class="row">
       <div class="col">
-        <h3><a href="{{ listing.url }}" target="_blank">{{ listing.title }}</a></h3>
+        <h3><a onclick="window.open('{{ listing.url }}', 'listing');" href="javascript:;">
+            {{ listing.title }}
+        </a></h3>
       </div>
     </div>
     {% if form.errors %}
