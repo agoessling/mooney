@@ -20,6 +20,10 @@ class Listing(peewee.Model):
   state = peewee.CharField(null=True)
   price = peewee.FloatField(null=True)
   source_time = peewee.TimestampField()
+  sold = peewee.BooleanField(null=False, default=False)
+  starred = peewee.BooleanField(null=False, default=False)
+  eliminated = peewee.BooleanField(null=False, default=False)
+  notes = peewee.TextField(null=True)
 
   class Meta:
     database = db
