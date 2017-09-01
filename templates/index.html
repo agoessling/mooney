@@ -25,6 +25,7 @@
         <th>City</th>
         <th>State</th>
         <th>Price</th>
+        <th>Adjusted Price</th>
       </tr>
     </thead>
     <tfoot>
@@ -49,6 +50,9 @@
         <td>{{ item.state|NoNone }}</td>
         <td>{% if item.price %}
           {{ '${:,.0f}'.format(item.price) }}
+        {% endif %}</td>
+        <td>{% if item.adjusted_price %}
+          {{ '${:,.0f}'.format(item.adjusted_price) }}
         {% endif %}</td>
       </tr>
       {% endfor %}
