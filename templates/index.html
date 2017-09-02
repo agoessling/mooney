@@ -6,7 +6,12 @@
   <script type="text/javascript" charset="utf8"
       src="//cdn.datatables.net/1.10.15/js/jquery.dataTables.js"></script>
   <script type="text/javascript"
-      src="{{ url_for('static', filename='index.js') }}"></script>
+	  src="{{ url_for('static', filename='index.js') }}"></script>
+  <style>
+    .eliminated td { color:lightgray; font-style:italic; }
+    .eliminated a { color:lightblue; }
+    .starred td { font-weight:bold; background-color:lightyellow}
+  </style>
 {% endblock %}
 {% block content %}
   <table id="listings_table" class="table table-sm table-bordered nowrap">
@@ -33,7 +38,7 @@
     </tfoot>
     <tbody>
       {% for item in listings %}
-      <tr>
+      <tr{% if item.sold or item.eliminated %} class="eliminated"{% elif item.starred %} class="starred"{% endif %}>
         <td><a onclick="window.open('{{ item.url }}', 'listing');" href="/listing/{{ item.id }}">Edit</a></td>
         <td><a onclick="window.open('{{ item.url }}', 'listing');" href="javascript:;">
             {{ item.title }}
